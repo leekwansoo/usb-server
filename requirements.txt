@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+opencv-python
+jinja2
+bs64 # For Websocket end point
+paho-mqtt
+python-dotenv
+pyserial
+bleak
+usbx
+requests

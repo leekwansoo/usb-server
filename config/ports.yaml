@@ -1,0 +1,20 @@
+terminals:
+  WebCam1:
+    io_port: "usb://0"
+    type: camera
+    protocol: USB UVC (OpenCV)
+  TapoCam1:
+    io_port: "rtsp://${TAPO_CAM_USER}:${TAPO_CAM_PASSWORD}@192.168.0.50:554/stream1"
+    type: camera
+    protocol: RTSP (Tapo TC71)
+  # Uncomment once a serial device (Arduino/Zigbee dongle) shows up in list_ports:
+  # Arduino1:
+  #   io_port: "usb://COM3"
+  #   type: usb
+  #   protocol: USB-Serial pyserial
+  #   baudrate: 115200
+  # Tapo smart plug (P110) only, not a camera:
+  # Switch1:
+  #   io_port: "wifi://192.168.0.10:80"
+  #   type: wifi
+  #   protocol: Wi-Fi TCP
