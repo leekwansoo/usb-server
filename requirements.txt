@@ -7,5 +7,6 @@ paho-mqtt
 python-dotenv
 pyserial
 bleak
+usb
 usbx
 requests

@@ -20,7 +20,12 @@
     <h1>USB Webcam WebSocket Stream</h1>
 
     <canvas id="videoCanvas" width="640" height="480"></canvas>
-
+    <br><br><button id="startRecording" onclick="location.href='/start_recording'">Start Recording</button>
+    <span style="margin: 0 10px;"></span>
+    <button id="stopRecording" onclick="location.href='/stop_recording'">Stop Recording</button>
+    <span style="margin: 0 10px;"></span>
+    <button id="writeFrame" onclick="location.href='/write_frame'">Write Frame</button>
+    <script src="/static/nvr_controls.js"></script>
     <script>
         const canvas = document.getElementById("videoCanvas");
         const ctx = canvas.getContext("2d");
@@ -43,6 +48,7 @@
             }, 1000);
         };
     </script>
+    
 
 </body>
 </html>

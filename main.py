@@ -6,6 +6,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from usb_device import list_usb_devices
+from nvr_handler import NVRHandler
+nvr_handler = NVRHandler()
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
@@ -44,9 +46,25 @@ async def webcam_stream(websocket: WebSocket):
         # Small delay to avoid overloading CPU
         await asyncio.sleep(0.03)
 
+websocket = None  # Replace with an actual WebSocket instance before
 @app.get("/")
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
+
+@app.get("/start_recording")
+def start_recording():
+    nvr_handler.start_recording()
+    return {"status": "recording started"}
+
+@app.get("/stop_recording")
+def stop_recording():
+    nvr_handler.stop_recording()
+    return {"status": "recording stopped"}
+
+@app.get("/write_frame")
+def write_frame():
+    nvr_handler.write_frame()
+    return {"status": "frame written"}
 
 @app.websocket("/ws/video")
 async def video_ws(websocket: WebSocket):
