@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Basic Both-way Table</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6">
+<h1 class="text-xl font-bold mb-4">Basic Both-way Control Table (Foundation)</h1>
+<p class="text-gray-400 text-sm mb-4">This is the basic table that was expanded into integrated_dashboard.html - served via Jinja2</p>
+<div class="bg-gray-800 rounded p-4">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-700">
+      <tr><th class="p-2">Device</th><th class="p-2">Status</th><th class="p-2">Control</th></tr>
+    </thead>
+    <tbody class="divide-y divide-gray-700">
+      <tr><td class="p-2">Temp Sensor</td><td class="p-2" id="temp">23.5°C</td><td class="p-2">Uplink Only</td></tr>
+      <tr><td class="p-2">Door1</td><td class="p-2" id="door1">CLOSED</td><td class="p-2"><button onclick="fetch('/api/control/door',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({door_id:'Door1',command:'OPEN'})}).then(()=>location.reload())" class="bg-blue-600 px-2 py-1 rounded">OPEN</button></td></tr>
+      <tr><td class="p-2">Door2</td><td class="p-2" id="door2">CLOSED</td><td class="p-2"><button onclick="fetch('/api/control/door',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({door_id:'Door2',command:'OPEN'})}).then(()=>location.reload())" class="bg-blue-600 px-2 py-1 rounded">OPEN</button></td></tr>
+      <tr><td class="p-2">Light1</td><td class="p-2" id="light1">OFF</td><td class="p-2"><button onclick="fetch('/api/control/light',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({light_id:'Light1',state:'ON'})}).then(()=>location.reload())" class="bg-yellow-600 px-2 py-1 rounded">ON/OFF</button></td></tr>
+      <tr><td class="p-2">Light2</td><td class="p-2" id="light2">OFF</td><td class="p-2"><button onclick="fetch('/api/control/light',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({light_id:'Light2',state:'ON'})}).then(()=>location.reload())" class="bg-yellow-600 px-2 py-1 rounded">ON/OFF</button></td></tr>
+    </tbody>
+  </table>
+</div>
+<script>
+async function load(){ const r=await fetch('/api/status'); const d=await r.json(); document.getElementById('temp').textContent=d.devices.Temp1.temperature_c+'°C'; document.getElementById('door1').textContent=d.devices.Door1.status; document.getElementById('door2').textContent=d.devices.Door2.status; document.getElementById('light1').textContent=d.devices.Light1.state; document.getElementById('light2').textContent=d.devices.Light2.state; }
+load(); setInterval(load,3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+    "Door1": "CLOSED",
+    "Door2": "CLOSED",
+    "Light1": {"state": "OFF", "power_w": 0},
+    "Light2": {"state": "OFF", "power_w": 0},
+    "Switch1": {"state": "OFF", "power_w": 0, "today_kwh": 0.45},
+    "Switch2": {"state": "OFF", "power_w": 0, "today_kwh": 0.32},
+    "Temp1": {"temperature": 23.5, "humidity": 58},
+    "Camera1": {"online": True, "motion": False},
+    "Camera2": {"online": True, "motion": False},
+}

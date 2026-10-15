@@ -1,0 +1,51 @@
+{
+  "mcpServers": {
+    "iot-gateway": {
+      "command": "python",
+      "args": ["C:/IoT-Project/server.py"],
+      "env": {
+        "TAPO_EMAIL": "your_tapo@email.com",
+        "TAPO_PASSWORD": "your_tapo_password"
+      }
+    },
+    "iot-gateway-sse": {
+      "command": "python",
+      "args": ["C:/IoT-Project/server.py", "sse"],
+      "env": {
+        "TAPO_EMAIL": "your_tapo@email.com",
+        "TAPO_PASSWORD": "your_tapo_password"
+      },
+      "transport": "sse",
+      "url": "http://localhost:8000/sse"
+    }
+  }
+}
+
+// ===================== 설명 =====================
+// 1. Claude Desktop / Cursor 에서 사용하는 설정 파일
+// 위치:
+// - Claude Desktop: %APPDATA%\Claude\claude_desktop_config.json
+// - Cursor: .cursor/mcp.json
+// - VS Code Copilot: .vscode/mcp.json
+//
+// 2. 두 개 서버 등록 이유:
+// - iot-gateway: stdio 모드 - Claude가 직접 python을 실행 (AI Agent가 Tool 호출)
+// - iot-gateway-sse: SSE 모드 - 웹 대시보드(아까 만든 HTML)가 http://localhost:8000 으로 연결
+
+// 3. 사용법:
+// - pip install fastmcp tapo opencv-python paho-mqtt
+// - python server.py sse  -> 대시보드용 서버 시작
+// - Claude Desktop 재시작 -> Tools에 get_temperature, control_light 등 10개가 보임
+// - Claude에게 "Light1 켜줘, Door1 상태 보여줘, 카메라 스냅샷 찍어줘" 라고 말하면 Both-way 동작
+
+// 4. 카메라 RTSP 설정:
+// server.py 상단 CAMERA_RTSP 딕셔너리에 실제 Tapo C200/C320 주소 입력
+// 예: "Camera1": "rtsp://admin:password@192.168.0.201/stream1"
+// Tapo 카메라는 Tapo 앱에서 RTSP 계정 활성화 필요
+
+// 5. Tapo P110/P115 차이:
+// - 둘 다 ON/OFF 스위치 있음 (측면 버튼 + 앱 + Python)
+// - 둘 다 에너지 모니터링 있음
+// - P115가 원형이라 멀티탭 간섭 없음, 신형 추천
+// - P110M은 Matter 지원, P115는 Matter 미지원 (Wi-Fi 전용)
+// - Python 코드는 P110/P115/P110M 모두 동일하게 작동 (tapo 라이브러리)

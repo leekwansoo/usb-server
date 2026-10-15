@@ -67,6 +67,14 @@ def list_usb_devices():
 
     return results
 
+def list_webcam_devices():
+    webcam_devices = []
+    devices = list_usb_devices()
+    for d in devices:
+        if d["device_type"]  != None:
+            if "WEBCAM" in d["device_type"] or "CAMERA" in d["device_type"]:
+                webcam_devices.append(d)
+    return webcam_devices
 
 if __name__ == "__main__":
     for d in list_usb_devices():

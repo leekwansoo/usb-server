@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT Gateway - Integrated Control Center</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+.toggle-checkbox:checked { right: 0; border-color: #10B981; }
+.toggle-checkbox:checked + .toggle-label { background-color: #10B981; }
+.log-uplink { border-left: 3px solid #10B981; }
+.log-downlink { border-left: 3px solid #3B82F6; }
+.log-alarm { border-left: 3px solid #EF4444; }
+</style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+<!-- Header -->
+<header class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
+  <div class="flex items-center gap-3">
+    <i class="fas fa-network-wired text-blue-400 text-2xl"></i>
+    <div>
+      <h1 class="text-xl font-bold">IoT Gateway - FastAPI + FastMCP</h1>
+      <p class="text-xs text-gray-400">Both-way Server ↔ Terminal | Jinja2 + API Gateway</p>
+    </div>
+  </div>
+  <div class="flex gap-4 text-sm">
+    <span class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>FastAPI:8000</span>
+    <span class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>FastMCP:Connected</span>
+    <span id="clock" class="text-gray-400"></span>
+  </div>
+</header>
+
+<div class="grid grid-cols-12 gap-4 p-4">
+  <!-- Main Table -->
+  <div class="col-span-12 lg:col-span-8">
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="font-bold mb-3 flex items-center gap-2"><i class="fas fa-table"></i> Both-way Control Table (Server ↔ Terminal) <span style="flex: 1;"></span><button onclick="fetchStatus()" class="bg-blue-500 text-white px-2 py-1 rounded text-xs">Refresh</button></h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-700 text-gray-300">
+            <tr>
+              <th class="p-3 text-left">Type</th>
+              <th class="p-3 text-left">Device</th>
+              <th class="p-3 text-left">Uplink Data (Terminal→Server)</th>
+              <th class="p-3 text-left">Status</th>
+              <th class="p-3 text-left">Downlink Control (Server→Terminal)</th>
+            </tr>
+          </thead>
+          <tbody id="deviceTable" class="divide-y divide-gray-700">
+            <!-- Filled by JS -->
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Temp Chart -->
+      <div class="mt-4 bg-gray-900 rounded p-3">
+        <h3 class="text-sm font-bold mb-2"><i class="fas fa-thermometer-half text-red-400"></i> Temperature Sensor - Uplink Stream</h3>
+        <canvas id="tempChart" height="80"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Camera + Log -->
+  <div class="col-span-12 lg:col-span-4 space-y-4">
+    <!-- Camera Monitoring -->
+    <div class="bg-gray-800 rounded-lg p-4">
+      <h2 class="font-bold mb-3"><i class="fas fa-video text-red-400"></i> Home Camera Monitoring</h2>
+      <div class="grid grid-cols-1 gap-3">
+        <div class="bg-black rounded relative overflow-hidden">
+          <div class="aspect-video bg-gray-900 flex items-center justify-center">
+            <i class="fas fa-camera text-4xl text-gray-600"></i>
+            <img src="/api/camera/Camera1/stream" onerror="this.style.display='none'" class="absolute inset-0 w-full h-full object-contain" alt="Camera1 live">
+            <div class="absolute top-2 left-2 bg-red-600 text-xs px-2 py-1 rounded flex items-center gap-1"><span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>LIVE</div>
+            <div class="absolute top-2 right-2 bg-black/70 text-xs px-2 py-1 rounded">Camera1 - 1080P</div>
+            <div class="absolute bottom-2 left-2 text-xs bg-black/70 px-2 py-1 rounded">Motion: <span id="cam1Motion" class="text-yellow-400">No</span></div>
+          </div>
+          <div class="p-2 flex gap-2">
+            <button onclick="cameraAction('Camera1','SNAPSHOT')" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs"><i class="fas fa-camera"></i> Snapshot</button>
+            <button onclick="cameraAction('Camera1','START_RECORD')" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-xs"><i class="fas fa-record-vinyl"></i> REC</button>
+            <button onclick="cameraAction('Camera1','MOTION_ON')" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-1 rounded text-xs">Motion ON</button>
+          </div>
+        </div>
+        <div class="bg-black rounded relative overflow-hidden">
+          <div class="aspect-video bg-gray-900 flex items-center justify-center">
+            <i class="fas fa-camera text-4xl text-gray-600"></i>
+            <img src="/api/camera/Camera1/stream" onerror="this.style.display='none'" class="absolute inset-0 w-full h-full object-contain" alt="Camera2 live">
+            <div class="absolute top-2 left-2 bg-red-600 text-xs px-2 py-1 rounded flex items-center gap-1"><span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>LIVE</div>
+            <div class="absolute top-2 right-2 bg-black/70 text-xs px-2 py-1 rounded">Camera2 - 1080P</div>
+            <div class="absolute bottom-2 left-2 text-xs bg-black/70 px-2 py-1 rounded">Motion: <span id="cam2Motion" class="text-yellow-400">No</span></div>
+          </div>
+          <div class="p-2 flex gap-2">
+            <button onclick="cameraAction('Camera2','SNAPSHOT')" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs"><i class="fas fa-camera"></i> Snapshot</button>
+            <button onclick="cameraAction('Camera2','START_RECORD')" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-xs"><i class="fas fa-record-vinyl"></i> REC</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Both-way Log -->
+    <div class="bg-gray-800 rounded-lg p-4">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="font-bold"><i class="fas fa-exchange-alt"></i> Both-way Log</h2>
+        <button onclick="runDemo()" class="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded text-xs">Demo Cycle</button>
+      </div>
+      <div id="logPanel" class="bg-black rounded p-2 h-64 overflow-y-auto text-xs font-mono space-y-1"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let devices = {};
+let tempHistory = [];
+const maxHistory = 20;
+
+function updateClock(){ document.getElementById('clock').textContent = new Date().toLocaleString(); }
+setInterval(updateClock, 1000); updateClock();
+
+async function fetchStatus(){
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    devices = data.devices;
+    renderTable();
+    updateTempChart(data.devices.Temp1);
+    document.getElementById('cam1Motion').textContent = data.devices.Camera1.motion ? 'YES 🔴' : 'No';
+    document.getElementById('cam2Motion').textContent = data.devices.Camera2.motion ? 'YES 🔴' : 'No';
+  } catch(e){ console.error(e); }
+}
+
+function renderTable(){
+  const tbody = document.getElementById('deviceTable');
+  tbody.innerHTML = `
+    <tr class="hover:bg-gray-700/50">
+      <td class="p-3"><i class="fas fa-thermometer-half text-red-400"></i> Sensor</td>
+      <td class="p-3 font-bold">Temp1</td>
+      <td class="p-3">${devices.Temp1?.temperature_c}°C / ${devices.Temp1?.humidity||58}%<br><span class="text-xs text-gray-400">Battery ${devices.Temp1?.battery||87}%</span></td>
+      <td class="p-3"><span class="bg-green-600 px-2 py-1 rounded text-xs">Normal</span></td>
+      <td class="p-3 text-gray-400 text-xs">Telemetry Only (Uplink)</td>
+    </tr>
+    <tr class="hover:bg-gray-700/50">
+      <td class="p-3"><i class="fas fa-door-open text-yellow-400"></i> Door</td>
+      <td class="p-3 font-bold">Door1</td>
+      <td class="p-3">Last: ${devices.Door1?.status}</td>
+      <td class="p-3"><span class="px-2 py-1 rounded text-xs ${devices.Door1?.status==='OPEN'?'bg-red-600':'bg-green-600'}">${devices.Door1?.status}</span></td>
+      <td class="p-3 flex gap-2">
+        <button onclick="controlDoor('Door1','OPEN')" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs">OPEN</button>
+        <button onclick="controlDoor('Door1','CLOSE')" class="bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-xs">CLOSE</button>
+      </td>
+    </tr>
+    <tr class="hover:bg-gray-700/50">
+      <td class="p-3"><i class="fas fa-door-open text-yellow-400"></i> Door</td>
+      <td class="p-3 font-bold">Door2</td>
+      <td class="p-3">Last: ${devices.Door2?.status}</td>
+      <td class="p-3"><span class="px-2 py-1 rounded text-xs ${devices.Door2?.status==='OPEN'?'bg-red-600':'bg-green-600'}">${devices.Door2?.status}</span></td>
+      <td class="p-3 flex gap-2">
+        <button onclick="controlDoor('Door2','OPEN')" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs">OPEN</button>
+        <button onclick="controlDoor('Door2','CLOSE')" class="bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-xs">CLOSE</button>
+      </td>
+    </tr>
+    <tr class="hover:bg-gray-700/50">
+      <td class="p-3"><i class="fas fa-lightbulb text-yellow-300"></i> Light</td>
+      <td class="p-3 font-bold">Light1</td>
+      <td class="p-3">${devices.Light1?.power_w||0}W<br><span class="text-xs text-gray-400">Today ${Math.random().toFixed(3)}kWh</span></td>
+      <td class="p-3"><span class="px-2 py-1 rounded text-xs ${devices.Light1?.state==='ON'?'bg-yellow-500 text-black':'bg-gray-600'}">${devices.Light1?.state}</span></td>
+      <td class="p-3">
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" ${devices.Light1?.state==='ON'?'checked':''} onchange="controlLight('Light1', this.checked?'ON':'OFF')" class="sr-only peer">
+          <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+        </label>
+      </td>
+    </tr>
+    <tr class="hover:bg-gray-700/50">
+      <td class="p-3"><i class="fas fa-lightbulb text-yellow-300"></i> Light</td>
+      <td class="p-3 font-bold">Light2</td>
+      <td class="p-3">${devices.Light2?.power_w||0}W</td>
+      <td class="p-3"><span class="px-2 py-1 rounded text-xs ${devices.Light2?.state==='ON'?'bg-yellow-500 text-black':'bg-gray-600'}">${devices.Light2?.state}</span></td>
+      <td class="p-3">
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" ${devices.Light2?.state==='ON'?'checked':''} onchange="controlLight('Light2', this.checked?'ON':'OFF')" class="sr-only peer">
+          <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+        </label>
+      </td>
+    </tr>
+    <tr class="hover:bg-gray-700/50">
+      <td class="p-3"><i class="fas fa-plug text-blue-400"></i> Smart Plug</td>
+      <td class="p-3 font-bold">Switch1 (P115)</td>
+      <td class="p-3">${devices.Switch1?.current_power_w||0}W / ${devices.Switch1?.today_kwh||0}kWh today</td>
+      <td class="p-3"><span class="px-2 py-1 rounded text-xs ${devices.Switch1?.state==='ON'?'bg-blue-600':'bg-gray-600'}">${devices.Switch1?.state}</span></td>
+      <td class="p-3">
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" ${devices.Switch1?.state==='ON'?'checked':''} onchange="controlLight('Switch1', this.checked?'ON':'OFF')" class="sr-only peer">
+          <div class="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+        </label>
+      </td>
+    </tr>
+    <tr class="hover:bg-gray-700/50">
+      <td class="p-3"><i class="fas fa-plug text-blue-400"></i> Smart Plug</td>
+      <td class="p-3 font-bold">Switch2 (P115)</td>
+      <td class="p-3">${devices.Switch2?.current_power_w||0}W</td>
+      <td class="p-3"><span class="px-2 py-1 rounded text-xs ${devices.Switch2?.state==='ON'?'bg-blue-600':'bg-gray-600'}">${devices.Switch2?.state}</span></td>
+      <td class="p-3">
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" ${devices.Switch2?.state==='ON'?'checked':''} onchange="controlLight('Switch2', this.checked?'ON':'OFF')" class="sr-only peer">
+          <div class="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+        </label>
+      </td>
+    </tr>
+  `;
+}
+
+async function controlDoor(id, cmd){
+  addLog(`[DOWNLINK] Server -> ${id}: ${cmd}`, 'downlink');
+  const res = await fetch('/api/control/door', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({door_id:id, command:cmd})});
+  const data = await res.json();
+  addLog(`[UPLINK] ${id} -> Server: ${data.new_status} ACK`, 'uplink');
+  fetchStatus();
+}
+
+async function controlLight(id, state){
+  addLog(`[DOWNLINK] Server -> ${id}: ${state}`, 'downlink');
+  const res = await fetch('/api/control/light', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({light_id:id, state})});
+  const data = await res.json();
+  addLog(`[UPLINK] ${id} -> Server: ${data.new_state}, ${data.power_w}W`, 'uplink');
+  fetchStatus();
+}
+
+async function cameraAction(camId, action){
+  addLog(`[DOWNLINK] Server -> ${camId}: ${action}`, 'downlink');
+  const res = await fetch(`/api/control/camera/${camId}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action})});
+  const data = await res.json();
+  addLog(`[UPLINK] ${camId} -> Server: ${action} OK ${data.snapshot_url||''}`, 'uplink');
+}
+
+async function runDemo(){
+  addLog('=== Both-way Demo Cycle Start ===', 'alarm');
+  const res = await fetch('/api/bothway/demo');
+  const data = await res.json();
+  data.logs.forEach(l => {
+    const type = l.includes('DOWNLINK') ? 'downlink' : 'uplink';
+    addLog(l, type);
+  });
+  fetchStatus();
+}
+
+function addLog(msg, type){
+  const panel = document.getElementById('logPanel');
+  const div = document.createElement('div');
+  div.className = `p-1 ${type==='uplink'?'log-uplink bg-green-900/20': type==='downlink'?'log-downlink bg-blue-900/20':'log-alarm bg-red-900/20'}`;
+  div.textContent = `${new Date().toLocaleTimeString()} ${msg}`;
+  panel.appendChild(div);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function updateTempChart(tempData){
+  tempHistory.push(tempData.temperature_c);
+  if(tempHistory.length>maxHistory) tempHistory.shift();
+  const canvas = document.getElementById('tempChart');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle = '#EF4444';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  tempHistory.forEach((t,i)=>{
+    const x = (i/maxHistory)*canvas.width;
+    const y = canvas.height - ((t-20)/10)*canvas.height;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+// WebSocket for real-time UPLINK push
+function connectWS(){
+  const ws = new WebSocket(`ws://${location.host}/ws/bothway`);
+  ws.onmessage = (event)=>{
+    const data = JSON.parse(event.data);
+    if(data.type==='UPLINK'){
+      addLog(`[UPLINK-PUSH] Temp1 -> Server: ${data.Temp1.temperature}°C`, 'uplink');
+    }
+  };
+  ws.onclose = ()=> setTimeout(connectWS, 3000);
+}
+
+// Init
+fetchStatus();
+setInterval(fetchStatus, 3000);
+connectWS();
+addLog('[SYSTEM] FastAPI + Jinja2 Gateway Connected', 'alarm');
+addLog('[UPLINK] All terminals online', 'uplink');
+</script>
+</body>
+</html>

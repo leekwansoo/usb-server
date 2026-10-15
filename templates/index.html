@@ -29,7 +29,6 @@
     <script>
         const canvas = document.getElementById("videoCanvas");
         const ctx = canvas.getContext("2d");
-
         const ws = new WebSocket(`ws://${location.host}/ws/video`);
 
         ws.onmessage = (event) => {
@@ -48,7 +47,5 @@
             }, 1000);
         };
     </script>
-    
-
 </body>
 </html>
