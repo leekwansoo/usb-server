@@ -3,49 +3,43 @@
 <head>
     <title>WebSocket Webcam Stream</title>
     <style>
-        body {
-            background: #222;
-            color: #eee;
-            text-align: center;
-            font-family: Arial;
-        }
-        canvas {
-            margin-top: 20px;
-            border: 3px solid #555;
-        }
+        body { background: #222; color: #eee; text-align: center; font-family: Arial; }
+        canvas { margin-top: 20px; border: 3px solid #555; }
     </style>
 </head>
 <body>
-
     <h1>USB Webcam WebSocket Stream</h1>
-
     <canvas id="videoCanvas" width="640" height="480"></canvas>
-    <br><br><button id="startRecording" onclick="location.href='/start_recording'">Start Recording</button>
+    <br><br>
+    <label>Audio source:
+        <select id="audioSource"><option value="default">Default microphone</option></select>
+        <input type="file" accept="audio/*" id="musicFile" style="display:none;">
+    </label>
+    <br><br><button id="startRecording">Start Recording</button>
     <span style="margin: 0 10px;"></span>
-    <button id="stopRecording" onclick="location.href='/stop_recording'">Stop Recording</button>
-    <span style="margin: 0 10px;"></span>
-    <button id="writeFrame" onclick="location.href='/write_frame'">Write Frame</button>
+    <button id="stopRecording">Stop Recording</button>
+    <span id="recStatus" style="margin-left: 10px;"></span>
     <script src="/static/nvr_controls.js"></script>
     <script>
-        const canvas = document.getElementById("videoCanvas");
-        const ctx = canvas.getContext("2d");
-        const ws = new WebSocket(`ws://${location.host}/ws/video`);
+    const canvas = document.getElementById("videoCanvas");
+    const ctx = canvas.getContext("2d");
+    const ws = new WebSocket(`ws://${location.host}/ws/video`);
 
-        ws.onmessage = (event) => {
-            const img = new Image();
-            img.src = "data:image/jpeg;base64," + event.data;
+    ws.onmessage = (event) => {
+        const img = new Image();
+        img.src = "data:image/jpeg;base64," + event.data;
 
-            img.onload = () => {
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            };
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         };
+    };
 
-        ws.onerror = () => {
-            console.log("WebSocket error, reconnecting...");
-            setTimeout(() => {
-                location.reload();
-            }, 1000);
-        };
-    </script>
+    ws.onerror = () => {
+        console.log("WebSocket error, reconnecting...");
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
+    };
+</script>
 </body>
 </html>

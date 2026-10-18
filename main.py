@@ -1,235 +1,29 @@
-"""
-main.py - FastAPI + Jinja2 API Gateway for IoT Both-way Dashboard
-- Serves client .html via Jinja2 templates
-- Proxies FastMCP Server tools
-- Integrated Camera, Sensors, Lights, Doors, Plugs
-
-Run: uvicorn main:app --reload --port 8000
-"""
+# main functions for fastapi server
 import cv2
 import base64
 import asyncio
-import json
-import random
 import datetime
+import random
 import os
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+import json
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+
+CAMERA_RTSP = {
+    "Camera1": os.getenv("CAMERA1_RTSP"),
+    "Camera2": os.getenv("CAMERA2_RTSP"),
+}
 
 from pathlib import Path
 from usb_device import list_usb_devices
-from dotenv import load_dotenv
-# Load environment variables from .env
-load_dotenv()
-# Import our FastMCP logic (reuse from server.py)
-# For demo, we embed state here - in real project, import from server.py
-STATE = {
-    "Door1": "CLOSED",
-    "Door2": "CLOSED",
-    "Light1": {"state": "OFF", "power_w": 0},
-    "Light2": {"state": "OFF", "power_w": 0},
-    "Switch1": {"state": "OFF", "power_w": 0, "today_kwh": 0.45},
-    "Switch2": {"state": "OFF", "power_w": 0, "today_kwh": 0.32},
-    "Temp1": {"temperature": 23.5, "humidity": 58},
-    "Camera1": {"online": True, "motion": False},
-    "Camera2": {"online": True, "motion": False},
-    "Webcam1": {"online": True, "motion": False},
-    "Webcam2": {"online": True, "motion": False},
-}
+from nvr_handler import NVRHandler
+nvr_handler = NVRHandler()
 
-app = FastAPI(title="IoT Gateway API - FastAPI", version="1.0")
 
-# Create directories
-BASE_DIR = Path(__file__).parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-STATIC_DIR = BASE_DIR / "static"
-TEMPLATES_DIR.mkdir(exist_ok=True)
-STATIC_DIR.mkdir(exist_ok=True)
-
-app = FastAPI(title="IoT Gateway API - FastAPI", version="1.0")
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-# Mount static if exists
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-# Open your USB webcam
-usb_devices = list_usb_devices()
-if "WEBCAM" in usb_devices:
-    webcam_id = usb_devices.index("WEBCAM")
-else:
-    webcam_id = 0
-print(f"Using camera index: {webcam_id}")
-cap = cv2.VideoCapture(webcam_id)
-async def webcam_stream(websocket: WebSocket):
-    await websocket.accept()
-
-    while True:
-        success, frame = cap.read()
-        if not success:
-            await asyncio.sleep(0.01)
-            continue
-
-        # Encode frame as JPEG
-        ret, buffer = cv2.imencode(".jpg", frame)
-        frame_bytes = buffer.tobytes()
-
-        # Convert to Base64 for WebSocket transfer
-        frame_b64 = base64.b64encode(frame_bytes).decode("utf-8")
-
-        # Send to client
-        await websocket.send_text(frame_b64)
-
-        # Small delay to avoid overloading CPU
-        await asyncio.sleep(0.03)
-
-# websocket = None  # Replace with an actual WebSocket instance before
-
-# ===================== API Gateway - Both-way Tools =====================
-
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Main dashboard - Integrated Control Center"""
-    return templates.TemplateResponse(request, "integrated-dashboard.html", {"now": datetime.datetime.now()})
-
-@app.get("/basic", response_class=HTMLResponse)
-async def basic_dashboard(request: Request):
-    """Basic Both-way Table dashboard"""
-    return templates.TemplateResponse(request, "both-way-dashboard.html", {"now": datetime.datetime.now()})
-
-@app.get("/api/status")
-async def api_all_status():
-    """[UPLINK] Terminal -> Server : Get all devices status (Both-way demo)"""
-    # Simulate temp drift
-    STATE["Temp1"]["temperature"] = round(22.5 + random.random()*3.5, 1)
-    STATE["Temp1"]["humidity"] = random.randint(52, 68)
-    
-    return {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "direction": "Terminal -> Server (UPLINK)",
-        "devices": {
-            "Temp1": {
-                "temperature_c": STATE["Temp1"]["temperature"],
-                "humidity": STATE["Temp1"]["humidity"],
-                "battery": 87
-            },
-            "Door1": {"status": STATE["Door1"]},
-            "Door2": {"status": STATE["Door2"]},
-            "Light1": STATE["Light1"],
-            "Light2": STATE["Light2"],
-            "Switch1": {
-                **STATE["Switch1"],
-                "current_power_w": random.randint(800,1500) if STATE["Switch1"]["state"]=="ON" else 0
-            },
-            "Switch2": {
-                **STATE["Switch2"],
-                "current_power_w": random.randint(300,800) if STATE["Switch2"]["state"]=="ON" else 0
-            },
-            "Camera1": {"online": True, "motion": random.choice([True, False]), "recording": True},
-            "Camera2": {"online": True, "motion": random.choice([True, False]), "recording": True},
-        }
-    }
-
-@app.post("/api/control/door")
-async def api_control_door(payload: dict):
-    """[DOWNLINK] Server -> Terminal : Door OPEN/CLOSE"""
-    door_id = payload.get("door_id", "Door1")
-    command = payload.get("command", "OPEN").upper()
-    
-    if door_id not in STATE:
-        return JSONResponse({"error": "Invalid door_id"}, status_code=400)
-    
-    STATE[door_id] = "OPEN" if command == "OPEN" else "CLOSED"
-    
-    return {
-        "result": "OK",
-        "door_id": door_id,
-        "command": command,
-        "new_status": STATE[door_id],
-        "timestamp": datetime.datetime.now().isoformat(),
-        "direction": "Server -> Terminal (DOWNLINK)",
-        "log": f"[DOWNLINK] Server -> {door_id}: {command} | [UPLINK ACK] {door_id} -> Server: {STATE[door_id]}"
-    }
-
-@app.post("/api/control/light")
-async def api_control_light(payload: dict):
-    """[DOWNLINK] Server -> Terminal : Light ON/OFF switch"""
-    light_id = payload.get("light_id", "Light1")
-    state = payload.get("state", "ON").upper()
-    
-    if light_id not in STATE:
-        return JSONResponse({"error": "Invalid light_id"}, status_code=400)
-    
-    power = 12.5 if state == "ON" else 0
-    if "Switch" in light_id:
-        power = random.randint(800, 1500) if state == "ON" else 0
-    
-    STATE[light_id] = {"state": state, "power_w": power, "today_kwh": STATE[light_id].get("today_kwh", 0.5)}
-    
-    # Here you would call real Tapo API:
-    # from tapo import ApiClient
-    # client = ApiClient(TAPO_EMAIL, TAPO_PASSWORD)
-    # device = await client.p115(DEVICE_IPS[light_id])
-    # await device.on() if state=="ON" else device.off()
-    
-    return {
-        "result": "OK",
-        "light_id": light_id,
-        "new_state": state,
-        "power_w": power,
-        "timestamp": datetime.datetime.now().isoformat(),
-        "direction": "Server -> Terminal (DOWNLINK)",
-        "bothway": f"Server->{light_id}:{state} => Terminal reports power={power}W (UPLINK)"
-    }
-
-# Tapo RTSP: rtsp://<camera-account>:<password>@<ip>:554/stream1 (stream2 = low-res)
-CAMERA_RTSP = {
-    "Camera1": os.getenv("CAMERA1_RTSP"),
-    # "Camera2": os.getenv("CAMERA2_RTSP"),
-}
-print(f"Camera RTSP URLs: {CAMERA_RTSP}")
-def camera_play(url):
-    print(f"Playing camera stream from URL: {url}")
-    cap = cv2.VideoCapture(url)
-    
-    if not cap.isOpened():
-        print("Failed to open camera")
-        return
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            continue
-        # automatically resize the frame to 640x360 for display
-        frame = cv2.resize(frame, (640, 360))
-        cv2.imshow("Camera", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-    
-def webcam_play(index):
-    print(f"Playing camera stream from webcam: {index}")
-    cap = cv2.VideoCapture(index)
-    
-    if not cap.isOpened():
-        print("Failed to open camera")
-        return
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            continue
-        # automatically resize the frame to 640x360 for display
-        frame = cv2.resize(frame, (640, 360))
-        cv2.imshow("Camera", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
 def _mjpeg_frames(url: str):
-
     os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
     cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     try:
@@ -244,92 +38,119 @@ def _mjpeg_frames(url: str):
     finally:
         cap.release()
 
-@app.get("/api/webcam/{webcam_id}/stream")
-async def api_camera_stream(webcam_id: str):
-    """[UPLINK] USB -> MJPEG stream for browser <img>"""
-    port = USB_PORT.get(webcam_id)
-    if not port:
-        return JSONResponse({"error": f"No usb port for webcam found: {webcam_id}"}, status_code=404)
-    try:
-        import cv2  # noqa: F401
-    except ImportError:
-        return JSONResponse({"error": "opencv-python not installed"}, status_code=500)
-    return StreamingResponse(_mjpeg_frames(port), media_type="multipart/x-mixed-replace; boundary=frame")
+BASE_DIR = Path(__file__).parent
+STATIC_DIR = BASE_DIR / "static"
 
-@app.get("/api/camera/{camera_id}/stream")
-async def api_camera_stream(camera_id: str):
-    """[UPLINK] RTSP -> MJPEG stream for browser <img>"""
-    url = CAMERA_RTSP.get(camera_id)
-    if not url:
-        return JSONResponse({"error": f"Set CAMERA1_RTSP/CAMERA2_RTSP env for {camera_id}"}, status_code=404)
-    try:
-        import cv2  # noqa: F401
-    except ImportError:
-        return JSONResponse({"error": "opencv-python not installed"}, status_code=500)
-    return StreamingResponse(_mjpeg_frames(url), media_type="multipart/x-mixed-replace; boundary=frame")
+STATE = {
+    "Door1": "CLOSED",
+    "Door2": "CLOSED",
+    "Camera1": {"online": True, "motion": False},
+    "Webcam1": {"online": True, "motion": False},
+}
 
-@app.post("/api/control/camera/{camera_id}")
-async def api_control_camera(camera_id: str, payload: dict):
-    """[DOWNLINK] Server -> Terminal : Camera control + [UPLINK] snapshot"""
-    action = payload.get("action", "SNAPSHOT").upper()
-    
-    return {
-        "result": "OK",
-        "camera_id": camera_id,
-        "action": action,
-        "snapshot_url": f"/static/snapshots/{camera_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg" if action=="SNAPSHOT" else None,
-        "timestamp": datetime.datetime.now().isoformat(),
-        "direction": "Both-way: DOWNLINK command + UPLINK video stream"
-    }
 
-@app.get("/api/bothway/demo")
-async def api_bothway_demo():
-    """Full Both-way cycle demo for professor"""
-    logs = []
-    # 1. Downlink
-    logs.append(f"{datetime.datetime.now().isoformat()} [DOWNLINK] Server -> Light1: ON")
-    STATE["Light1"] = {"state": "ON", "power_w": 12.5}
-    await asyncio.sleep(0.2)
-    logs.append(f"{datetime.datetime.now().isoformat()} [UPLINK] Light1 -> Server: ON, 12.5W")
-    
-    logs.append(f"{datetime.datetime.now().isoformat()} [DOWNLINK] Server -> Door1: OPEN")
-    STATE["Door1"] = "OPEN"
-    await asyncio.sleep(0.2)
-    logs.append(f"{datetime.datetime.now().isoformat()} [UPLINK] Door1 -> Server: OPEN")
-    
-    logs.append(f"{datetime.datetime.now().isoformat()} [UPLINK] Temp1 -> Server: {STATE['Temp1']['temperature']}C (spontaneous)")
-    logs.append(f"{datetime.datetime.now().isoformat()} [UPLINK] Camera1 -> Server: motion=True (event)")
-    logs.append(f"{datetime.datetime.now().isoformat()} [UPLINK] Camera2 -> Server: motion=True (event)")
-    return {"demo": "Both-way Server<->Terminal cycle", "logs": logs, "states": STATE}
+# Open your USB webcam
+def get_usb_camera_index():
+    usb_devices = list_usb_devices()
+    if "WEBCAM" in usb_devices:
+        return usb_devices.index("WEBCAM")
+    else:
+        return 0
 
-# WebSocket for real-time Both-way push
-@app.websocket("/ws/bothway")
-async def websocket_bothway(websocket: WebSocket):
+def get_usb_camera():
+    camera_index = get_usb_camera_index()
+    camera = cv2.VideoCapture(camera_index)
+    return camera
+camera = get_usb_camera()
+
+def play_video(video_path):
+    cap = cv2.VideoCapture(str(video_path))
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.resize(frame, (640, 480))
+        cv2.imshow('Video', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    cap.release()
+    cv2.destroyAllWindows()   
+    return True
+
+async def webcam_stream(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            # Simulate spontaneous UPLINK every 10 sec
-            data = {
-                "type": "UPLINK",
-                "timestamp": datetime.datetime.now().isoformat(),
-                "Temp1": {"temperature": round(22.5 + random.random()*3.5, 1)},
-                "Camera1": {"motion": random.choice([True, False])},
-                "Camera2": {"motion": random.choice([True, False])},
-                "Switch1": {"power_w": random.randint(800,1500) if STATE["Switch1"]["state"]=="ON" else 0}
-            }
-            await websocket.send_text(json.dumps(data))
-            await asyncio.sleep(10)
-    except WebSocketDisconnect:
+            success, frame = camera.read()
+            if not success:
+                await asyncio.sleep(0.05)
+                continue
+
+            nvr_handler.write_frame(frame)
+
+            ret, buffer = cv2.imencode(".jpg", frame)
+            frame_b64 = base64.b64encode(buffer.tobytes()).decode("utf-8")
+            await websocket.send_text(frame_b64)
+
+            await asyncio.sleep(0.03)
+    except (WebSocketDisconnect, RuntimeError):
+        # Browser closed or reloaded the page
         pass
 
-@app.websocket("/ws/video")
-async def video_ws(websocket: WebSocket):
-    await webcam_stream(websocket)
-# Health
-@app.get("/api/health")
-async def health():
-    return {"status": "OK", "gateway": "FastAPI + Jinja2 + FastMCP", "bothway": "Server<->Terminal active"}
+async def _webcam_mjpeg():
+    while True:
+        success, frame = await asyncio.to_thread(camera.read)
+        if not success:
+            await asyncio.sleep(0.05)
+            continue
+        nvr_handler.write_frame(frame)
+        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        if ok:
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
+        await asyncio.sleep(0.03)
+        
+async def tapo_camera_stream(websocket: WebSocket):
+    await websocket.accept()
+    url = CAMERA_RTSP.get("Camera1")
+    if not url:
+        await websocket.close(code=1011, reason="CAMERA1_RTSP is not set in .env")
+        return
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+    cap = await asyncio.to_thread(cv2.VideoCapture, url, cv2.CAP_FFMPEG)
+    try:
+        if not cap.isOpened():
+            await websocket.close(code=1011, reason="Cannot open Tapo RTSP stream")
+            return
+        failures = 0
+        while True:
+            ok, frame = await asyncio.to_thread(cap.read)
+            if not ok or frame is None or frame.size == 0:
+                failures += 1
+                if failures > 50:
+                    await websocket.close(code=1011, reason="RTSP stream lost")
+                    return
+                await asyncio.sleep(0.05)
+                continue
+            failures = 0
+            nvr_handler.write_frame(frame)
+
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if not ret:
+                continue
+            await websocket.send_text(base64.b64encode(buffer.tobytes()).decode("utf-8"))
+            await asyncio.sleep(0.01)
+    except (WebSocketDisconnect, RuntimeError):
+        # Browser closed or reloaded the page
+        pass
+    finally:
+        cap.release()
+
+# websocket = None  # Replace with an actual WebSocket instance before
+
+
+
+
+
+
+

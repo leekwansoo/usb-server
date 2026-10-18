@@ -12,7 +12,7 @@ CAMERA_RTSP = {
     "Camera1": os.getenv("CAMERA1_RTSP"),
     "Camera2": os.getenv("CAMERA2_RTSP"),
 }
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,39 +22,19 @@ from pathlib import Path
 from usb_device import list_usb_devices
 from nvr_handler import NVRHandler
 nvr_handler = NVRHandler()
+import numpy as np
+import os, uuid
+from ultralytics import YOLO
 
+from main import _mjpeg_frames, _webcam_mjpeg, play_video, webcam_stream, get_usb_camera_index, get_usb_camera
+camera = get_usb_camera()
 
-def _mjpeg_frames(url: str):
-    os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
-    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-    try:
-        while cap.isOpened():
-            ok, frame = cap.read()
-            if not ok:
-                break
-            frame = cv2.resize(frame, (640, 360))
-            ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            if ok:
-                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
-    finally:
-        cap.release()
-
-BASE_DIR = Path(__file__).parent
-STATIC_DIR = BASE_DIR / "static"
-
-STATE = {
-    "Door1": "CLOSED",
-    "Door2": "CLOSED",
-    "Light1": {"state": "OFF", "power_w": 0},
-    "Light2": {"state": "OFF", "power_w": 0},
-    "Switch1": {"state": "OFF", "power_w": 0, "today_kwh": 0.45},
-    "Switch2": {"state": "OFF", "power_w": 0, "today_kwh": 0.32},
-    "Temp1": {"temperature": 23.5, "humidity": 58},
-    "Camera1": {"online": True, "motion": False},
-    "Camera2": {"online": True, "motion": False},
-    "Webcam1": {"online": True, "motion": False},
-    "Webcam2": {"online": True, "motion": False},
-}
+from main import STATE, STATIC_DIR, BASE_DIR, CAMERA_RTSP, get_usb_camera_index
+CAMERA_RTSP = CAMERA_RTSP
+BASE_DIR = BASE_DIR
+UPLOAD_DIR = BASE_DIR / "uploads"
+STATIC_DIR = STATIC_DIR
+STATE = STATE
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -68,38 +48,6 @@ else:
     camera_index = 0
 print(f"Using camera index: {camera_index}")
 camera = cv2.VideoCapture(camera_index)
-
-async def webcam_stream(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        success, frame = camera.read()
-        if not success:
-            await asyncio.sleep(0.05)
-            continue
-
-        # Encode frame as JPEG
-        ret, buffer = cv2.imencode(".jpg", frame)
-        frame_bytes = buffer.tobytes()
-
-        # Convert to Base64 for WebSocket transfer
-        frame_b64 = base64.b64encode(frame_bytes).decode("utf-8")
-
-        # Send to client
-        await websocket.send_text(frame_b64)
-
-        # Small delay to avoid overloading CPU
-        await asyncio.sleep(0.03)
-
-async def _webcam_mjpeg():
-    while True:
-        success, frame = await asyncio.to_thread(camera.read)
-        if not success:
-            await asyncio.sleep(0.05)
-            continue
-        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-        if ok:
-            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
-        await asyncio.sleep(0.03)
 
 # websocket = None  # Replace with an actual WebSocket instance before
 @app.get("/")
@@ -148,36 +96,46 @@ def write_frame():
     nvr_handler.write_frame()
     return {"status": "frame written"}
 
+
+# 얼굴용 YOLO 모델 로드 (처음 한번만)
+yolo_face = YOLO("yolov8n-face.pt") 
+SAVE_DIR = "captures"
+os.makedirs(SAVE_DIR, exist_ok=True)
+
+@app.post("/api/camera/{camera_id}/capture")
+async def capture_and_recognize(camera_id: str, file: UploadFile = File(...)):
+    # 1. JPG 저장
+    filename = f"{camera_id}_{uuid.uuid4().hex[:6]}.jpg"
+    path = os.path.join(SAVE_DIR, filename)
+    
+    content = await file.read()
+    with open(path, "wb") as f:
+        f.write(content)
+
+    # 2. YOLO 안면 인식
+    results = yolo_face(path, conf=0.5, verbose=False)
+    detections = []
+    for box in results[0].boxes:
+        x1,y1,x2,y2 = map(int, box.xyxy[0])
+        conf = float(box.conf[0])
+        detections.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "conf": conf, "label": "face"})
+
+    return {"saved": filename, "path": path, "detections": detections, "count": len(detections)}
+
 @app.get("/api/status")
 async def api_all_status():
     """[UPLINK] Terminal -> Server : Get all devices status (Both-way demo)"""
     # Simulate temp drift
     STATE["Temp1"]["temperature"] = round(22.5 + random.random()*3.5, 1)
-    STATE["Temp1"]["humidity"] = random.randint(52, 68)
     
     return {
         "timestamp": datetime.datetime.now().isoformat(),
         "direction": "Terminal -> Server (UPLINK)",
         "devices": {
-            "Temp1": {
-                "temperature_c": STATE["Temp1"]["temperature"],
-                "humidity": STATE["Temp1"]["humidity"],
-                "battery": 87
-            },
             "Door1": {"status": STATE["Door1"]},
-            "Door2": {"status": STATE["Door2"]},
             "Light1": STATE["Light1"],
-            "Light2": STATE["Light2"],
-            "Switch1": {
-                **STATE["Switch1"],
-                "current_power_w": random.randint(800,1500) if STATE["Switch1"]["state"]=="ON" else 0
-            },
-            "Switch2": {
-                **STATE["Switch2"],
-                "current_power_w": random.randint(300,800) if STATE["Switch2"]["state"]=="ON" else 0
-            },
             "Camera1": {"online": True, "motion": random.choice([True, False]), "recording": True},
-            "Camera2": {"online": True, "motion": random.choice([True, False]), "recording": True},
+            "Webcam1": {"online": True, "motion": random.choice([True, False]), "recording": True},
         }
     }
 @app.websocket("/ws/bothway")
@@ -188,9 +146,8 @@ async def websocket_bothway(websocket: WebSocket):
             data = {
                 "type": "UPLINK",
                 "timestamp": datetime.datetime.now().isoformat(),
-                "Temp1": {"temperature": round(22.5 + random.random()*3.5, 1)},
                 "Camera1": {"motion": random.choice([True, False])},
-                "Camera2": {"motion": random.choice([True, False])},
+                "Webcam1": {"motion": random.choice([True, False])},
                 "Switch1": {"power_w": random.randint(800, 1500) if STATE["Switch1"]["state"] == "ON" else 0},
             }
             await websocket.send_text(json.dumps(data))

@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 opencv-python
+numpy
 jinja2
 bs64 # For Websocket end point
 paho-mqtt
@@ -10,3 +11,6 @@ bleak
 usb
 usbx
 requests
+wsproto
+websockets
+ultralytics
