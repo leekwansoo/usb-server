@@ -39,7 +39,7 @@ STATE = STATE
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
+app.mount("/config", StaticFiles(directory=str(BASE_DIR / "config")), name="config")
 # Open your USB webcam
 usb_devices = list_usb_devices()
 if "WEBCAM" in usb_devices:
@@ -85,13 +85,12 @@ async def api_webcam_stream(webcam: int = 0):
 def start_recording():
     nvr_handler.start_recording()
     return {"status": "recording started"}
-
 @app.get("/stop_recording")
 def stop_recording():
     nvr_handler.stop_recording()
     return {"status": "recording stopped"}
 
-@app.get("/write_frame")
+@app.post("/write_frame")
 def write_frame():
     nvr_handler.write_frame()
     return {"status": "frame written"}
@@ -148,7 +147,7 @@ async def websocket_bothway(websocket: WebSocket):
                 "timestamp": datetime.datetime.now().isoformat(),
                 "Camera1": {"motion": random.choice([True, False])},
                 "Webcam1": {"motion": random.choice([True, False])},
-                "Switch1": {"power_w": random.randint(800, 1500) if STATE["Switch1"]["state"] == "ON" else 0},
+                "Door1": {"state": random.choice(["OPEN", "CLOSED"])},
             }
             await websocket.send_text(json.dumps(data))
             await asyncio.sleep(10)

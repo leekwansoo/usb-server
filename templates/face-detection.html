@@ -1,41 +1,46 @@
-<img id="displayImg" src="/api/camera/Camera1/stream" width="640" height="480">
-<canvas id="recordCanvas" width="640" height="480" style="display:none"></canvas>
-<canvas id="captureCanvas" width="640" height="480" style="border:2px solid #0f0; margin-top:10px"></canvas>
+<html>
+<head>
+    <title>Face Detection</title>
+</head>
+<body>
+    <h2>Face Detection</h2>
+    <div>
+        <img id="displayImg" src="/api/webcam/stream" width="640" height="480">
+        <canvas id="faceCanvas" width="640" height="480" style="display:none"></canvas>
 
-<br><br>
-<button id="btnCapture">1. 화면 캡쳐 (JPG 생성)</button>
-<button id="btnRecognize" disabled>2. 안면 인식 실행</button>
-<span id="recStatus"></span>
-<div id="resultBox"></div>
+        <br><br>
+        <button id="capture">1. 화면 캡쳐 (JPG 생성)</button>
+        <button id="recognize" disabled>2. 안면 인식 실행</button>
+        <span id="recStatus"></span>
+        <div id="resultBox"></div>
+    </div>
 
 <script>
 const img = document.getElementById("displayImg");
-const recordCanvas = document.getElementById("recordCanvas");
-const captureCanvas = document.getElementById("captureCanvas");
-const rCtx = recordCanvas.getContext("2d");
-const cCtx = captureCanvas.getContext("2d");
+const faceCanvas = document.getElementById("faceCanvas");
+const rCtx = faceCanvas.getContext("2d");
 
 let capturedBlob = null;
 
 // MJPEG -> 숨은 canvas에 계속 그리기 (녹화용과 동일)
 function drawLoop() {
     if (img.complete && img.naturalWidth > 0) {
-        rCtx.drawImage(img, 0, 0, recordCanvas.width, recordCanvas.height);
+        rCtx.drawImage(img, 0, 0, faceCanvas.width, faceCanvas.height);
     }
     requestAnimationFrame(drawLoop);
 }
 drawLoop();
 
 // 1. 캡쳐 버튼
-document.getElementById("btnCapture").onclick = () => {
+document.getElementById("capture").onclick = () => {
     // 현재 화면을 캡쳐 캔버스에 복사
-    cCtx.drawImage(recordCanvas, 0, 0, captureCanvas.width, captureCanvas.height);
+    rCtx.drawImage(faceCanvas, 0, 0, faceCanvas.width, faceCanvas.height);
     
     // JPG Blob 생성
-    captureCanvas.toBlob(blob => {
+    faceCanvas.toBlob(blob => {
         capturedBlob = blob;
         document.getElementById("recStatus").innerText = `JPG 생성 완료 (${(blob.size/1024).toFixed(1)}KB)`;
-        document.getElementById("btnRecognize").disabled = false;
+        document.getElementById("recognize").disabled = false;
         
         // 로컬 다운로드도 하고 싶으면
         // const a = document.createElement('a');
@@ -46,14 +51,14 @@ document.getElementById("btnCapture").onclick = () => {
 };
 
 // 2. 인식 버튼
-document.getElementById("btnRecognize").onclick = async () => {
+document.getElementById("recognize").onclick = async () => {
     if (!capturedBlob) return alert("먼저 캡쳐하세요");
     
     document.getElementById("recStatus").innerText = "인식중...";
     const formData = new FormData();
     formData.append("file", capturedBlob, "capture.jpg");
 
-    const res = await fetch("/api/camera/Camera1/capture", {
+    const res = await fetch("/api/webcam/capture", {
         method: "POST",
         body: formData
     });
@@ -65,11 +70,13 @@ document.getElementById("btnRecognize").onclick = async () => {
 
     // 캡쳐 캔버스에 박스 그리기
     data.detections.forEach(d => {
-        cCtx.strokeStyle = "#00FF00";
-        cCtx.lineWidth = 3;
-        cCtx.strokeRect(d.x1, d.y1, d.x2-d.x1, d.y2-d.y1);
-        cCtx.fillStyle = "#00FF00";
-        cCtx.fillText(`face ${d.conf.toFixed(2)}`, d.x1, d.y1-5);
+        rCtx.strokeStyle = "#00FF00";
+        rCtx.lineWidth = 3;
+        rCtx.strokeRect(d.x1, d.y1, d.x2-d.x1, d.y2-d.y1);
+        rCtx.fillStyle = "#00FF00";
+        rCtx.fillText(`face ${d.conf.toFixed(2)}`, d.x1, d.y1-5);
     });
 };
 </script>
+</body>
+</html>
