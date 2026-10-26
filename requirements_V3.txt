@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+opencv-python
+numpy
+pillow
+ultralytics
+mediapipe
+rembg
+onnxruntime

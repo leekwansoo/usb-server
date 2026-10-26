@@ -1,0 +1,30 @@
+<html>
+<head>
+    <title>Face Detection</title>
+</head>
+<body>
+    <h2>Face Detection</h2>
+    <div>
+        <img id="displayImg" src="/api/webcam/stream" width="640" height="480">
+        <canvas id="faceCanvas" width="640" height="480" style="display:none"></canvas>
+    </div>
+
+<script>
+const img = document.getElementById("displayImg");
+const faceCanvas = document.getElementById("faceCanvas");
+const rCtx = faceCanvas.getContext("2d");
+
+let capturedBlob = null;
+
+// MJPEG -> 숨은 canvas에 계속 그리기 (녹화용과 동일)
+function drawLoop() {
+    if (img.complete && img.naturalWidth > 0) {
+        rCtx.drawImage(img, 0, 0, faceCanvas.width, faceCanvas.height);
+    }
+    requestAnimationFrame(drawLoop);
+}
+drawLoop();
+
+</script>
+</body>
+</html>

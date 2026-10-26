@@ -9,6 +9,7 @@
         <canvas id="faceCanvas" width="640" height="480" style="display:none"></canvas>
 
         <br><br>
+        <input type="name" id="name_id" placeholder="Enter name">
         <button id="capture">1. 화면 캡쳐 (JPG 생성)</button>
         <button id="recognize" disabled>2. 안면 인식 실행</button>
         <span id="recStatus"></span>
@@ -58,7 +59,7 @@ document.getElementById("recognize").onclick = async () => {
     const formData = new FormData();
     formData.append("file", capturedBlob, "capture.jpg");
 
-    const res = await fetch("/api/webcam/capture", {
+    const res = await fetch(`/api/webcam/capture/${document.getElementById("name_id").value}`, {
         method: "POST",
         body: formData
     });

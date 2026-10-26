@@ -1,0 +1,43 @@
+
+<!DOCTYPE html>
+<html>
+<head><title>Passport Capture V2</title>
+<style>
+body{font-family:sans-serif; margin:20px}
+#guide{position:absolute; border:3px dashed yellow; pointer-events:none}
+.container{position:relative; display:inline-block}
+#status{color:green; font-weight:bold}
+</style>
+</head>
+<body>
+<h2>Passport Photo Capture - 35x45mm (413x531)</h2>
+<p>Frame Size: Live preview 1280x720, Guide 38% width, Face should be 70-80% of guide</p>
+<div class="container">
+<img id="stream" src="/api/webcam/stream/passport/" width="1280" height="720" />
+</div>
+<div>
+<span>Enter your Name and press Capture:</span><input type="text" id="name_id" placeholder="Enter your name" />
+<button onclick="capture()">Capture Passport</button>
+<span id="status"></span>
+</div>
+<canvas id="canvas" style="display:none"></canvas>
+<script>
+async function capture(){
+  const img = document.getElementById('stream');
+  const canvas = document.getElementById('canvas');
+  canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  canvas.getContext('2d').drawImage(img,0,0);
+  canvas.toBlob(async (blob)=>{
+    const form = new FormData(); form.append('file', blob, 'capture.jpg');
+    const res = await fetch('/api/webcam/capture/passport/'+document.getElementById('name_id').value, {method:'POST', body:form});
+    const data = await res.json();
+    console.log(data);
+    document.getElementById('status').innerText = data.passport_path ? `Saved: ${data.passport_path}` : data.msg;
+    if(data.passport_path){
+      window.open('/'+data.passport_path.replace('\\','/'), '_blank');
+    }
+  }, 'image/jpeg', 0.95);
+}
+</script>
+</body>
+</html>
