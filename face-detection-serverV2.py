@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from ultralytics import YOLO
 
-# --- Your existing modules (keep) ---
+from utils.face_frame_handler import resize_for_passport
 # If usb_device, main modules missing, fallback
 try:
     from main import get_usb_camera, _webcam_mjpeg, webcam_stream, get_usb_camera_index, STATIC_DIR, BASE_DIR
@@ -71,69 +71,18 @@ else:
 PASSPORT_TARGET_W, PASSPORT_TARGET_H = 413, 531  # 35x45mm @300dpi
 FACE_RATIO_MIN, FACE_RATIO_MAX = 0.65, 0.85  # face should occupy 65-85% of passport height
 
-def expand_for_passport(x1, y1, x2, y2, img_w, img_h, face_ratio=0.75):
-    """
-    Expand YOLO box to passport composition:
-    - Passport: face = 70-80% of height, centered, top padding 15%, bottom 20%
-    - Your V1 had fixed +40px, which fails for small images like 244x309
-    """
-    bw = x2 - x1
-    bh = y2 - y1
-    
-    # If box too small (<60px), it's eye-only bug - expand 3x
-    if bw < 60 or bh < 60:
-        cx, cy = x1 + bw/2, y1 + bh/2
-        bw, bh = bw*3, bh*3
-        x1, y1 = int(cx - bw/2), int(cy - bh/2)
-        x2, y2 = int(x1 + bw), int(y1 + bh)
-    
-    # Passport composition: we want final crop where face is 75% of height
-    # So we need to add background around face
-    # Top: 15% of face height, Bottom: 25%, Sides: 20%
-    top_pad = int(bh * 0.4)    # forehead
-    bottom_pad = int(bh * 0.6) # chin + neck
-    side_pad = int(bw * 0.5)
-    
-    x1_e = max(0, x1 - side_pad)
-    y1_e = max(0, y1 - top_pad)
-    x2_e = min(img_w, x2 + side_pad)
-    y2_e = min(img_h, y2 + bottom_pad)
-    
-    return x1_e, y1_e, x2_e, y2_e
-
-def make_passport_image(cropped_path, output_path):
-    """Resize cropped face to exact 413x531 and add white background if needed"""
-    with Image.open(cropped_path) as im:
-        # Convert to RGB
-        im = im.convert("RGB")
-        # Resize to passport with aspect ratio preserved, then pad white
-        # Use ImageOps.fit to crop to exact ratio
-        passport = ImageOps.fit(im, (PASSPORT_TARGET_W, PASSPORT_TARGET_H), method=Image.LANCZOS, centering=(0.5, 0.4))
-        passport.save(output_path, "JPEG", quality=95, dpi=(300,300))
-    return output_path
-
-def get_frame_guide(frame_w, frame_h):
-    """
-    Frame-Size: How big should live preview guide be?
-    - For 1280x720 preview, guide = 50% width, 70% height, centered slightly up
-    - This guide = final passport area
-    """
-    guide_w = int(frame_w * 0.38)  # 1280*0.38 ≈ 486px ~ passport ratio
-    guide_h = int(frame_h * 0.65)  # 720*0.65 ≈ 468px
-    # Force passport aspect 35:45 = 0.777
-    guide_h = int(guide_w / 0.777)
-    if guide_h > frame_h*0.7:
-        guide_h = int(frame_h*0.7)
-        guide_w = int(guide_h * 0.777)
-    
-    x1 = (frame_w - guide_w)//2
-    y1 = (frame_h - guide_h)//2 - int(frame_h*0.05)  # eyes at 60% height
-    return (x1, y1, x1+guide_w, y1+guide_h, guide_w, guide_h)
+from utils.face_frame_handler import get_frame_guide, expand_for_passport, remove_background_white, make_passport_image, make_passport_final
 
 # --- Routes ---
 camera_index = get_usb_camera_index()
 camera = get_usb_camera()
 @app.get("/")
+def index(request: Request):
+    if templates:
+        return templates.TemplateResponse(request, "face-detectionV1.html")
+    return {"msg":"Face Detection V2 Passport Server", "passport_size":"413x531 (35x45mm)"}
+
+@app.get("/passport_picture")
 def index(request: Request):
     if templates:
         return templates.TemplateResponse(request, "face-detectionV2.html")
@@ -215,6 +164,7 @@ async def capture_and_resize(name: str, file: UploadFile = File(...)):
         cropped = im.crop((x1_e, y1_e, x2_e, y2_e))
         cropped.save(path, "JPEG", quality=95)
     
+    
     return {"saved_path": str(path), "box": box_size, "conf": float(boxes[0].conf[0])}
 
 @app.post("/api/webcam/capture/passport/{name}")
@@ -223,7 +173,7 @@ async def capture_passport(name: str, file: UploadFile = File(...)):
     NEW - Passport 35x45mm final output
     Upload -> detect -> expand -> crop -> resize to 413x531 -> save
     """
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"raw_{timestamp}.jpg"
     path = SAVE_DIR / filename
     content = await file.read()
@@ -287,6 +237,7 @@ async def capture_and_resize_named(name: str, file: UploadFile = File(...)):
         cropped = im.crop((x1_e, y1_e, x2_e, y2_e))
         cropped.save(path, "JPEG", quality=95)
     return {"saved_path": str(path), "box": box_size, "conf": float(boxes[0].conf[0])}
+
 @app.get("/passport_photos/{filename}")
 async def get_passport_photo(filename: str):
     file_path = PASSPORT_SAVE_DIR / filename

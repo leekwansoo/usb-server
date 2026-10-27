@@ -11,9 +11,10 @@ body{font-family:sans-serif; margin:20px}
 </head>
 <body>
 <h2>Passport Photo Capture - 35x45mm (413x531)</h2>
-<p>Frame Size: Live preview 1280x720, Guide 38% width, Face should be 70-80% of guide</p>
+<p>Frame Size: Live preview 720x720, Guide 38% width, Face should be 70-80% of guide</p>
 <div class="container">
-<img id="stream" src="/api/webcam/stream/passport/" width="1280" height="720" />
+// reduce the the frame size
+<img id="stream" src="/api/webcam/stream/passport/" width="960" height="540" />
 </div>
 <div>
 <span>Enter your Name and press Capture:</span><input type="text" id="name_id" placeholder="Enter your name" />

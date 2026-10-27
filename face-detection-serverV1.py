@@ -22,7 +22,7 @@ from main import get_usb_camera
 
 import os, uuid, cv2
 from ultralytics import YOLO
-
+from utils.face_frame_handler import resize_for_recognition
 from main import _mjpeg_frames, _webcam_mjpeg, webcam_stream, get_usb_camera_index, get_usb_camera
 camera_index = get_usb_camera_index()
 # camera = get_usb_camera(camera_index)
@@ -34,8 +34,10 @@ STATIC_DIR = STATIC_DIR
 
 # 얼굴용 YOLO 모델 로드 (처음 한번만)
 yolo_face = YOLO("yolov8n-face.pt") 
-SAVE_DIR = "captures"
-os.makedirs(SAVE_DIR, exist_ok=True)
+SAVE_DIR_1 = "captures"
+SAVE_DIR_2 = "resized"
+os.makedirs(SAVE_DIR_1, exist_ok=True)
+os.makedirs(SAVE_DIR_2, exist_ok=True)
 
 app = FastAPI()
 
@@ -64,7 +66,7 @@ async def api_webcam_stream(webcam: int = 0):
 async def capture_and_resize(file: UploadFile = File(...)):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}.jpg"
-    path = os.path.join(SAVE_DIR, filename)
+    path = os.path.join(SAVE_DIR_1, filename)
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -87,13 +89,24 @@ async def capture_and_resize(file: UploadFile = File(...)):
         cropped = im.crop((x1_e, y1_e, x2_e, y2_e))
         # 필요하면 고정 사이즈로 resize: cropped = cropped.resize((320, 320))
         cropped.save(path, "JPEG", quality=95)
-    return {"saved_path": path, "box": box_size, "conf": float(results[0].boxes[0].conf[0])}
+        
+    # resize the image for face recognition
+    x1_e, y1_e, x2_e, y2_e = resize_for_recognition(x1, y1, x2, y2, W, H)
+    box_size = {"x1": x1_e, "y1": y1_e, "x2": x2_e, "y2": y2_e}
+    
+    path = os.path.join(SAVE_DIR_2, f"resized_{filename}")
+    with Image.open(path) as im:
+        cropped = im.crop((x1_e, y1_e, x2_e, y2_e))
+        # 필요하면 고정 사이즈로 resize: cropped = cropped.resize((320, 320))
+        cropped.save(path, "JPEG", quality=95)
+    
+    return {"saved_path": [path], "box": box_size, "conf": float(results[0].boxes[0].conf[0])}
 
 @app.post("/api/webcam/capture/{name}")
 async def capture_and_resize(name: str, file: UploadFile = File(...)):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{name}_{timestamp}.jpg"
-    path = os.path.join(SAVE_DIR, filename)
+    path = os.path.join(SAVE_DIR_1, filename)
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)
@@ -116,6 +129,8 @@ async def capture_and_resize(name: str, file: UploadFile = File(...)):
         cropped = im.crop((x1_e, y1_e, x2_e, y2_e))
         # 필요하면 고정 사이즈로 resize: cropped = cropped.resize((320, 320))
         cropped.save(path, "JPEG", quality=95)
+        
+        
     return {"saved_path": path, "box": box_size, "conf": float(results[0].boxes[0].conf[0])}
 
 @app.post("/api/webcam/recognize")
@@ -124,7 +139,7 @@ async def recognize(file: UploadFile = File(...)):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}.jpg"
     # filename = f"{uuid.uuid4().hex[:6]}.jpg"
-    path = os.path.join(SAVE_DIR, filename)
+    path = os.path.join(SAVE_DIR_1, filename)
     
     content = await file.read()
     with open(path, "wb") as f:
