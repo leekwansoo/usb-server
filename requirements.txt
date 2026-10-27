@@ -4,8 +4,8 @@ opencv-python
 numpy
 jinja2
 bs64 # For Websocket end point
-paho-mqtt
 python-dotenv
+python-multipart
 pyserial
 bleak
 usb
