@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from ultralytics import YOLO
 
-from utils.face_frame_handler import resize_for_passport
+from utils.face_frame_handler import resize_for_recognition
 # If usb_device, main modules missing, fallback
 try:
     from main import get_usb_camera, _webcam_mjpeg, webcam_stream, get_usb_camera_index, STATIC_DIR, BASE_DIR

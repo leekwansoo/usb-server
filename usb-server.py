@@ -126,13 +126,17 @@ async def api_all_status():
     """[UPLINK] Terminal -> Server : Get all devices status (Both-way demo)"""
     # Simulate temp drift
     STATE["Temp1"]["temperature"] = round(22.5 + random.random()*3.5, 1)
+    STATE["Temp1"]["humidity"] = round(50 + random.random()*10, 1)
     
     return {
         "timestamp": datetime.datetime.now().isoformat(),
         "direction": "Terminal -> Server (UPLINK)",
         "devices": {
+            "Temp1": {"temperature": STATE["Temp1"]["temperature"], "humidity": STATE["Temp1"]["humidity"]},
             "Door1": {"status": STATE["Door1"]},
-            "Light1": STATE["Light1"],
+            "Switch1": {"status": STATE["Switch1"]},
+            "Switch2": {"status": STATE["Switch2"]},
+            "Light1": {"status": STATE["Light1"]},
             "Camera1": {"online": True, "motion": random.choice([True, False]), "recording": True},
             "Webcam1": {"online": True, "motion": random.choice([True, False]), "recording": True},
         }
@@ -148,6 +152,7 @@ async def websocket_bothway(websocket: WebSocket):
                 "Camera1": {"motion": random.choice([True, False])},
                 "Webcam1": {"motion": random.choice([True, False])},
                 "Door1": {"state": random.choice(["OPEN", "CLOSED"])},
+                "Light1": {"state": random.choice(["ON", "OFF"])}
             }
             await websocket.send_text(json.dumps(data))
             await asyncio.sleep(10)

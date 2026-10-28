@@ -44,6 +44,11 @@ STATIC_DIR = BASE_DIR / "static"
 STATE = {
     "Door1": "CLOSED",
     "Door2": "CLOSED",
+    "Light1": "OFF",
+    "Switch1": "OFF",
+    "Switch2": "OFF",
+    "Temp1": {"Temperature": 0, "Humidity": 0},
+    "Temp2": {"Temperature": 0, "Humidity": 0},
     "Camera1": {"online": True, "motion": False},
     "Webcam1": {"online": True, "motion": False},
 }
